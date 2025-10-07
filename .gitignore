@@ -1,0 +1,35 @@
+# Root .gitignore untuk proyek dinus-archive
+
+# Node & umum
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.log
+
+# Sistem OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE/editor
+.vscode/
+.idea/
+
+# Env & secrets
+.env
+*.env
+
+# Frontend build/cache
+frontend/dist/
+frontend/.vite/
+frontend/.cache/
+frontend/.eslintcache
+
+# Backend uploads (file hasil upload runtime)
+backend/uploads/
+
+# Coverage & reports
+coverage/
+.nyc_output/

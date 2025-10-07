@@ -1,0 +1,3 @@
+@echo off
+echo Starting DINUS Archive Backend Server...
+npm run start
