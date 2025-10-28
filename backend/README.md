@@ -1,149 +1,208 @@
-# DINUS Archive Backend API
+# Backend - Sistem Arsip Digital Universitas Dinus
 
-Backend API untuk aplikasi DINUS Archive yang mengelola arsip digital Universitas Dian Nuswantoro.
+Backend API untuk sistem manajemen arsip digital yang dibangun dengan Node.js dan Express.js.
 
-## Teknologi yang Digunakan
+## 🏗️ Arsitektur
 
-- Node.js
-- Express.js
-- MySQL
-- JWT untuk autentikasi
-- Multer untuk upload file
+### Teknologi Stack
+- **Runtime**: Node.js
+- **Framework**: Express.js
+- **Database**: MySQL dengan mysql2
+- **Authentication**: JWT (JSON Web Tokens)
+- **File Upload**: Multer
+- **Security**: bcryptjs untuk hashing password
+- **Environment**: dotenv untuk konfigurasi
 
-## Struktur Direktori
-
+### Struktur Direktori
 ```
 backend/
-├── config/             # Konfigurasi database
-├── controllers/        # Logic bisnis
-├── middleware/         # Middleware autentikasi dan upload
-├── routes/             # Definisi rute API
-├── uploads/            # Direktori penyimpanan file upload
-├── .env                # Variabel lingkungan
-├── package.json        # Dependensi
-└── server.js           # Entry point aplikasi
+├── config/
+│   └── database.js          # Konfigurasi koneksi database MySQL
+├── controllers/
+│   ├── archive.controller.js    # Logika bisnis untuk arsip
+│   ├── auth.controller.js       # Autentikasi dan otorisasi
+│   ├── letter.controller.js     # Manajemen surat
+│   └── staticField.controller.js # Data master (kategori, lokasi, dll)
+├── middleware/
+│   ├── auth.middleware.js       # Middleware autentikasi JWT
+│   └── upload.middleware.js     # Middleware upload file
+├── routes/
+│   ├── index.js                 # Router utama
+│   ├── archive.routes.js        # Routes untuk arsip
+│   ├── auth.routes.js           # Routes untuk autentikasi
+│   ├── letter.routes.js         # Routes untuk surat
+│   └── staticField.routes.js    # Routes untuk data master
+├── uploads/                     # Direktori penyimpanan file upload
+├── server.js                    # Entry point aplikasi
+└── package.json                 # Dependencies dan scripts
 ```
 
-## Fitur
+## 🔧 Fitur Utama
 
-- Autentikasi admin dengan JWT
-- Manajemen arsip (CRUD)
-- Manajemen kategori (CRUD)
-- Manajemen subkategori (CRUD)
-- Manajemen posisi (CRUD)
-- Upload gambar arsip
-- Pencarian dan filter arsip (kategori, subkategori, posisi, tanggal, kata kunci)
+### 1. Manajemen Arsip
+- **GET /api/archives** - Mendapatkan daftar arsip dengan pagination, pencarian, dan filter
+- **GET /api/archives/:id** - Mendapatkan detail arsip berdasarkan ID
+- **POST /api/archives** - Membuat arsip baru (Admin only)
+- **PUT /api/archives/:id** - Mengupdate arsip (Admin only)
+- **DELETE /api/archives/:id** - Menghapus arsip (Admin only)
 
-## Endpoint API
+### 2. Autentikasi & Otorisasi
+- **POST /api/auth/login** - Login dengan username/password
+- **JWT Token** - Sistem autentikasi berbasis token
+- **Role-based Access** - Pembedaan akses admin dan user biasa
 
-Base URL: `http://localhost:5000/api`
+### 3. Manajemen Surat
+- **CRUD Operations** - Create, Read, Update, Delete untuk surat
+- **Status Tracking** - Pelacakan status surat
+- **Detail Management** - Manajemen detail surat
 
-### Autentikasi
+### 4. Data Master (Static Fields)
+- **Categories** - Manajemen kategori arsip
+- **Subcategories** - Manajemen subkategori
+- **Locations** - Manajemen lokasi penyimpanan
+- **Cabinets** - Manajemen lemari arsip
+- **Shelves** - Manajemen rak penyimpanan
+- **Positions** - Manajemen posisi dalam rak
+- **Education Levels** - Tingkat pendidikan
+- **Faculties** - Fakultas
+- **Programs** - Program studi
 
-- `POST /auth/login` - Login admin
-- `GET /auth/profile` - Profil admin yang sedang login
+## 🔐 Sistem Keamanan
 
-### Arsip
+### Authentication Middleware
+```javascript
+// Verifikasi JWT Token
+exports.verifyToken = async (req, res, next) => {
+  // Validasi Bearer token dari header Authorization
+  // Decode JWT dan set req.userId, req.isAdmin
+}
 
-- `GET /archives` - Mendapatkan semua arsip dengan pagination, pencarian, dan filter
-  - Query params:
-    - `page` (default: `1`)
-    - `limit` (default: `10`)
-    - `search` (opsional)
-    - `category_id` (opsional)
-    - `subcategory_id` (opsional)
-    - `position_id` (opsional)
-    - `start_date`, `end_date` (opsional, format `YYYY-MM-DD`)
-  - Response (format baru):
-    ```json
-    {
-      "success": true,
-      "data": [
-        {
-          "id": 1,
-          "title": "...",
-          "category_id": 2,
-          "subcategory_id": 5,
-          "position_id": 12,
-          "category_name": "Nama Kategori",
-          "subcategory_name": "Nama Subkategori",
-          "position_name": "Nama Posisi",
-          "date": "2025-01-01",
-          "location": "...",
-          "image": "...",
-          "created_at": "...",
-          "updated_at": "..."
-        }
-      ],
-      "pagination": { "page": 1, "limit": 10, "total": 25, "total_pages": 3 }
-    }
-    ```
-- `GET /archives/:id` - Mendapatkan detail arsip berdasarkan ID
-  - Response (format objek langsung, menyertakan `category_name`, `subcategory_name`, `position_name`).
-- `POST /archives` - Membuat arsip baru (admin only, multipart/form-data)
-- `PUT /archives/:id` - Mengupdate arsip (admin only, multipart/form-data)
-- `DELETE /archives/:id` - Menghapus arsip (admin only)
+// Verifikasi Admin Role
+exports.verifyAdmin = (req, res, next) => {
+  // Memastikan user memiliki role admin
+}
+```
 
-### Kategori
+### Route Protection
+- **Public Routes**: GET archives, GET archive by ID
+- **Admin Routes**: POST, PUT, DELETE operations (memerlukan verifyToken + verifyAdmin)
 
-- `GET /categories`
-- `GET /categories/:id`
-- `POST /categories` (admin)
-- `PUT /categories/:id` (admin)
-- `DELETE /categories/:id` (admin)
+## 📊 Database Integration
 
-### Subkategori
+### Connection Pool
+```javascript
+const pool = mysql.createPool({
+  host: process.env.DB_HOST,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME,
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0
+});
+```
 
-- `GET /subcategories` (query: `category_id` opsional)
-- `GET /subcategories/:id`
-- `POST /subcategories` (admin)
-- `PUT /subcategories/:id` (admin)
-- `DELETE /subcategories/:id` (admin)
+### Query Features
+- **Pagination** - Limit dan offset untuk performa optimal
+- **Search** - Full-text search pada title dan description
+- **Filtering** - Filter berdasarkan kategori, lokasi, dll
+- **Joins** - Relasi antar tabel untuk data lengkap
+- **Location Hierarchy** - Struktur hierarki lokasi penyimpanan
 
-### Posisi
+## 🚀 Instalasi & Menjalankan
 
-- `GET /positions` (query: `subcategory_id` opsional)
-- `GET /positions/:id`
-- `POST /positions` (admin)
-- `PUT /positions/:id` (admin)
-- `DELETE /positions/:id` (admin)
+### Prerequisites
+- Node.js (v14 atau lebih tinggi)
+- MySQL Database
+- npm atau yarn
 
-## Instalasi dan Penggunaan
+### Environment Variables
+Buat file `.env` dengan konfigurasi:
+```env
+DB_HOST=localhost
+DB_USER=your_db_user
+DB_PASSWORD=your_db_password
+DB_NAME=arsip_udinus
+JWT_SECRET=your_jwt_secret_key
+JWT_EXPIRES_IN=24h
+PORT=5000
+```
 
-1. Clone repository
-2. Buka terminal di direktori `backend`
-3. Install dependensi: `npm install`
-   - Jika mengalami masalah izin eksekusi script di PowerShell, jalankan PowerShell sebagai Administrator:
-     ```powershell
-     Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
-     ```
-4. Buat file `.env` berdasarkan `.env.example` dan sesuaikan:
-   ```env
-   PORT=5000
-   DB_HOST=localhost
-   DB_USER=root
-   DB_PASSWORD=password
-   DB_NAME=nama_database_arsip
-   JWT_SECRET=jwt-secret-key
-   ```
-5. Jalankan server:
-   - Development: `npm run dev` atau `nodemon server.js`
-   - Production: `npm start`
-6. Server berjalan di `http://localhost:5000`
+### Instalasi Dependencies
+```bash
+npm install
+```
 
-## Catatan Kompatibilitas Response
+### Menjalankan Server
+```bash
+# Development mode
+npm run dev
 
-- Endpoint `GET /archives` menggunakan format respons baru yang menyertakan `success`, `data`, dan `pagination`.
-- Endpoint `GET /archives/:id` mengembalikan objek arsip langsung (tanpa bungkus `success`). Frontend telah menyesuaikan kedua format ini.
+# Production mode
+npm start
+```
 
-## Keamanan
+Server akan berjalan di `http://localhost:5000`
 
-- Autentikasi menggunakan JWT
-- Role-based access control (admin vs user biasa)
-- Validasi input untuk mencegah SQL injection
-- Sanitasi output untuk mencegah XSS
+## 📁 File Upload
 
-## Perubahan Terbaru
+### Konfigurasi Multer
+- **Destination**: `./uploads/`
+- **Filename**: Timestamp + original filename
+- **File Types**: Images (jpg, jpeg, png, gif)
+- **Size Limit**: Sesuai konfigurasi
 
-- Menambahkan `LEFT JOIN positions` pada daftar/detail arsip sehingga `position_name` tersedia.
-- Menambahkan dukungan filter `position_id` di `GET /archives` (termasuk pada query utama dan query hitung total).
+### Upload Endpoint
+```javascript
+// Upload file saat create/update archive
+router.post('/', verifyToken, verifyAdmin, upload.single('image'), archiveController.createArchive);
+```
+
+## 🔄 API Response Format
+
+### Success Response
+```json
+{
+  "success": true,
+  "data": [...],
+  "pagination": {
+    "total": 100,
+    "page": 1,
+    "limit": 10,
+    "total_pages": 10
+  }
+}
+```
+
+### Error Response
+```json
+{
+  "message": "Error description"
+}
+```
+
+## 🛠️ Development
+
+### Code Structure
+- **Controllers** - Logika bisnis dan interaksi database
+- **Routes** - Definisi endpoint dan middleware
+- **Middleware** - Fungsi pembantu (auth, upload, dll)
+- **Config** - Konfigurasi database dan environment
+
+### Best Practices
+- Async/await untuk operasi database
+- Error handling yang konsisten
+- Validasi input pada setiap endpoint
+- Separation of concerns antar layer
+- Environment-based configuration
+
+## 📝 Logging & Monitoring
+
+- Console logging untuk development
+- Error tracking pada setiap controller
+- Database query monitoring
+- Authentication attempt logging
+
+---
+
+**Catatan**: Pastikan database MySQL sudah disetup dengan schema yang sesuai sebelum menjalankan aplikasi.

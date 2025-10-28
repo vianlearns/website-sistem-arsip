@@ -1,147 +1,105 @@
-// Types yang sesuai dengan struktur database SQL
+// Static Hierarchical Field Types
+export interface LocationHierarchy {
+  category?: string;
+  subcategory?: string;
+  location?: string;
+  cabinet?: string;
+  shelf?: string;
+  position?: string;
+}
 
+// Archive Types
 export interface Archive {
   id: number;
   title: string;
-  description: string | null;
-  category_id: number | null;
-  subcategory_id: number | null;
-  position_id: number | null;
-  position_name?: string; // Nama posisi dari join backend
-  date: string | null; // Format: YYYY-MM-DD
-  location: string | null;
-  image: string | null; // URL atau path file
-  created_by: number | null;
-  created_at: string; // ISO 8601 format
-  updated_at: string; // ISO 8601 format
-  category?: Category;
-  subcategory?: SubCategory;
-  position?: Position;
-  created_by_admin?: Admin;
-}
-
-export interface SubCategory {
-  id: number;
-  name: string;
-  category_id: number;
+  description?: string;
+  date?: string;
+  image?: string;
+  file_path?: string;
+  file_size?: number;
+  file_type?: string;
+  is_active: boolean;
+  created_by?: number;
+  created_by_name?: string;
   created_at: string;
   updated_at: string;
-  category?: Category;
-  category_name?: string; // Menambahkan properti category_name
-  positions?: Position[];
-}
-
-export interface Position {
-  id: number;
-  name: string;
-  subcategory_id: number;
-  created_at: string;
-  updated_at: string;
-  subcategory?: SubCategory;
-  subcategory_name?: string;
-}
-
-export interface Category {
-  id: number;
-  name: string;
-  description: string | null;
-  created_at: string;
-  updated_at: string;
-  subcategories?: SubCategory[];
-}
-
-
-
-export interface Admin {
-  id: number;
-  username: string;
-  name: string;
-  last_login: string | null;
-}
-
-
-
-// DTO untuk create/update archive
-
-export interface ArchiveFilters {
+  // Static hierarchical fields
   category_id?: number;
   subcategory_id?: number;
+  location_id?: number;
+  cabinet_id?: number;
+  shelf_id?: number;
   position_id?: number;
-  search?: string;
-  start_date?: string;
-  end_date?: string;
+  location_hierarchy?: LocationHierarchy;
 }
+
+// DTO Types for API requests
 export interface CreateArchiveDTO {
   title: string;
   description?: string;
+  date?: string;
+  image?: string | File;
+  file_path?: string;
+  file_size?: number;
+  file_type?: string;
   category_id?: number;
   subcategory_id?: number;
+  location_id?: number;
+  cabinet_id?: number;
+  shelf_id?: number;
   position_id?: number;
-  category_name?: string;
-  subcategory_name?: string;
-  date?: string; // YYYY-MM-DD format
-  location?: string;
-  image?: File | string;
 }
 
 export interface UpdateArchiveDTO {
   title?: string;
   description?: string;
-  category_id?: number;
-  subcategory_id?: number;
-  position_id?: number;
-  category_name?: string;
-  subcategory_name?: string;
   date?: string;
-  location?: string;
-  image?: File | string;
-}
-
-// Response types untuk API
-export interface ArchiveResponse {
-  success: boolean;
-  data: Archive;
-  message?: string;
-}
-
-export interface ArchivesResponse {
-  success: boolean;
-  data: Archive[];
-  message?: string;
-}
-
-export interface CategoriesResponse {
-  success: boolean;
-  data: Category[];
-  message?: string;
-}
-
-export interface SubCategoriesResponse {
-  success: boolean;
-  data: SubCategory[];
-  message?: string;
-}
-
-
-
-// Filter types untuk searching
-export interface ArchiveFilters {
+  image?: string | File;
+  file_path?: string;
+  file_size?: number;
+  file_type?: string;
+  is_active?: boolean;
   category_id?: number;
   subcategory_id?: number;
+  location_id?: number;
+  cabinet_id?: number;
+  shelf_id?: number;
   position_id?: number;
-  search?: string;
-  start_date?: string;
-  end_date?: string;
 }
 
-// Pagination
+// API Response Types
+export interface ApiResponse<T> {
+  success: boolean;
+  message: string;
+  data: T;
+}
+
 export interface PaginatedResponse<T> {
   success: boolean;
+  message: string;
   data: T[];
   pagination: {
     page: number;
     limit: number;
     total: number;
-    total_pages: number;
+    totalPages: number;
   };
+}
+
+export interface ArchivesResponse extends PaginatedResponse<Archive> {}
+export interface ArchiveResponse extends ApiResponse<Archive> {}
+
+// Filter Types
+export interface ArchiveFilter {
+  title?: string;
+  category_id?: number;
+  subcategory_id?: number;
+  location_id?: number;
+  cabinet_id?: number;
+  shelf_id?: number;
+  position_id?: number;
+  date_from?: string;
+  date_to?: string;
+  is_active?: boolean;
+  search?: string;
 }

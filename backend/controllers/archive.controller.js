@@ -5,15 +5,26 @@ const path = require('path');
 // Get all archives with pagination, search, and filtering
 exports.getAllArchives = async (req, res) => {
   try {
-    const { page = 1, limit = 10, search = '', category = '', category_id = '', subcategory_id = '', position_id = '' } = req.query;
+    const { page = 1, limit = 10, search = '' } = req.query;
     const offset = (page - 1) * limit;
     
     let query = `
-      SELECT a.*, c.name as category_name, sc.name as subcategory_name, sc.id as subcategory_id, p.name as position_name 
+      SELECT a.*, 
+             c.name as category_name,
+             s.name as subcategory_name,
+             l.name as location_name,
+             cab.name as cabinet_name,
+             sh.name as shelf_name,
+             p.name as position_name,
+             admin.name as created_by_name
       FROM archives a 
-      LEFT JOIN categories c ON a.category_id = c.id 
-      LEFT JOIN subcategories sc ON a.subcategory_id = sc.id 
-      LEFT JOIN positions p ON a.position_id = p.id 
+      LEFT JOIN categories c ON a.category_id = c.id
+      LEFT JOIN subcategories s ON a.subcategory_id = s.id
+      LEFT JOIN locations l ON a.location_id = l.id
+      LEFT JOIN cabinets cab ON a.cabinet_id = cab.id
+      LEFT JOIN shelves sh ON a.shelf_id = sh.id
+      LEFT JOIN positions p ON a.position_id = p.id
+      LEFT JOIN admin ON a.created_by = admin.id 
       WHERE 1=1
     `;
     
@@ -24,27 +35,6 @@ exports.getAllArchives = async (req, res) => {
       query += ` AND (a.title LIKE ? OR a.description LIKE ?)`;
       queryParams.push(`%${search}%`, `%${search}%`);
     }
-    
-    // Add category filter if provided (support both category and category_id parameters)
-    if (category_id) {
-      query += ` AND a.category_id = ?`;
-      queryParams.push(category_id);
-    } else if (category) {
-      query += ` AND c.id = ?`;
-      queryParams.push(category);
-    }
-    
-    // Add subcategory filter if provided
-    if (subcategory_id) {
-      query += ` AND a.subcategory_id = ?`;
-      queryParams.push(subcategory_id);
-    }
-    
-    // Add position filter if provided
-    if (position_id) {
-      query += ` AND a.position_id = ?`;
-      queryParams.push(position_id);
-    }
 
     // Add order by and pagination
     query += ` ORDER BY a.created_at DESC LIMIT ? OFFSET ?`;
@@ -53,12 +43,22 @@ exports.getAllArchives = async (req, res) => {
     // Execute query
     const [archives] = await db.execute(query, queryParams);
     
+    // Add location hierarchy information for each archive
+    for (let archive of archives) {
+      archive.location_hierarchy = {
+        category: archive.category_name,
+        subcategory: archive.subcategory_name,
+        location: archive.location_name,
+        cabinet: archive.cabinet_name,
+        shelf: archive.shelf_name,
+        position: archive.position_name
+      };
+    }
+    
     // Get total count for pagination
     let countQuery = `
       SELECT COUNT(*) as total 
       FROM archives a 
-      LEFT JOIN categories c ON a.category_id = c.id 
-      LEFT JOIN subcategories sc ON a.subcategory_id = sc.id 
       WHERE 1=1
     `;
     
@@ -69,31 +69,8 @@ exports.getAllArchives = async (req, res) => {
       countParams.push(`%${search}%`, `%${search}%`);
     }
     
-    // Add category filter if provided (support both category and category_id parameters)
-    if (category_id) {
-      countQuery += ` AND a.category_id = ?`;
-      countParams.push(category_id);
-    } else if (category) {
-      countQuery += ` AND c.id = ?`;
-      countParams.push(category);
-    }
-    
-    // Add subcategory filter if provided
-    if (subcategory_id) {
-      countQuery += ` AND a.subcategory_id = ?`;
-      countParams.push(subcategory_id);
-    }
-
-    // Add position filter if provided
-    if (position_id) {
-      countQuery += ` AND a.position_id = ?`;
-      countParams.push(position_id);
-    }
-    
     const [countResult] = await db.execute(countQuery, countParams);
     const total = countResult[0].total;
-    
-
     
     res.status(200).json({
       success: true,
@@ -117,11 +94,22 @@ exports.getArchiveById = async (req, res) => {
     const { id } = req.params;
     
     const [archives] = await db.execute(`
-      SELECT a.*, c.name as category_name, sc.name as subcategory_name, sc.id as subcategory_id, p.name as position_name 
+      SELECT a.*, 
+             c.name as category_name,
+             s.name as subcategory_name,
+             l.name as location_name,
+             cab.name as cabinet_name,
+             sh.name as shelf_name,
+             p.name as position_name,
+             admin.name as created_by_name
       FROM archives a 
-      LEFT JOIN categories c ON a.category_id = c.id 
-      LEFT JOIN subcategories sc ON a.subcategory_id = sc.id 
-      LEFT JOIN positions p ON a.position_id = p.id 
+      LEFT JOIN categories c ON a.category_id = c.id
+      LEFT JOIN subcategories s ON a.subcategory_id = s.id
+      LEFT JOIN locations l ON a.location_id = l.id
+      LEFT JOIN cabinets cab ON a.cabinet_id = cab.id
+      LEFT JOIN shelves sh ON a.shelf_id = sh.id
+      LEFT JOIN positions p ON a.position_id = p.id
+      LEFT JOIN admin ON a.created_by = admin.id 
       WHERE a.id = ?
     `, [id]);
     
@@ -131,7 +119,15 @@ exports.getArchiveById = async (req, res) => {
     
     const archive = archives[0];
     
-
+    // Add location hierarchy information
+    archive.location_hierarchy = {
+      category: archive.category_name,
+      subcategory: archive.subcategory_name,
+      location: archive.location_name,
+      cabinet: archive.cabinet_name,
+      shelf: archive.shelf_name,
+      position: archive.position_name
+    };
     
     res.status(200).json(archive);
   } catch (error) {
@@ -143,81 +139,125 @@ exports.getArchiveById = async (req, res) => {
 // Create new archive
 exports.createArchive = async (req, res) => {
   try {
-    // Only admin can create archives
-    if (!req.isAdmin) {
-      return res.status(403).json({ message: 'Forbidden: Admin access required' });
-    }
+    const { title, description, date, image, category_id, subcategory_id, location_id, cabinet_id, shelf_id, position_id } = req.body;
+    const created_by = req.userId;
     
-    const { title, description, category_id, category_name, subcategory_id, subcategory_name, position_id, date, location } = req.body;
+    // Convert undefined to null for safe database operations
+    const safeParams = {
+      title: title || null,
+      description: description || null,
+      date: date || null,
+      image: image || null,
+      category_id: category_id || null,
+      subcategory_id: subcategory_id || null,
+      location_id: location_id || null,
+      cabinet_id: cabinet_id || null,
+      shelf_id: shelf_id || null,
+      position_id: position_id || null
+    };
+    
+    console.log('Creating archive with data:', safeParams);
     
     // Validate required fields
-    if (!title) {
-      return res.status(400).json({ message: 'Title is required' });
+    if (!safeParams.title || !safeParams.description || !safeParams.date) {
+      return res.status(400).json({ message: 'Title, description, and date are required' });
     }
     
-    // Handle category - use existing ID or create new category
-    let finalCategoryId = category_id ? parseInt(category_id) : null;
-    
-    if (!finalCategoryId && category_name) {
-      // Check if category exists
-      const [existingCategories] = await db.execute('SELECT id FROM categories WHERE name = ?', [category_name]);
+    // Validate hierarchy consistency if provided
+    if (safeParams.position_id) {
+      const [positionCheck] = await db.execute(`
+        SELECT p.id, p.shelf_id, sh.cabinet_id, cab.location_id, l.subcategory_id, s.category_id
+        FROM positions p
+        LEFT JOIN shelves sh ON p.shelf_id = sh.id
+        LEFT JOIN cabinets cab ON sh.cabinet_id = cab.id
+        LEFT JOIN locations l ON cab.location_id = l.id
+        LEFT JOIN subcategories s ON l.subcategory_id = s.id
+        WHERE p.id = ?
+      `, [safeParams.position_id]);
       
-      if (existingCategories.length > 0) {
-        finalCategoryId = existingCategories[0].id;
-      } else {
-        // Create new category
-        const [newCategory] = await db.execute('INSERT INTO categories (name) VALUES (?)', [category_name]);
-        finalCategoryId = newCategory.insertId;
+      if (positionCheck.length === 0) {
+        return res.status(400).json({ message: 'Invalid position_id: Position does not exist' });
       }
-    }
-    
-    // Set image path if file was uploaded
-    let imagePath = null;
-    if (req.file) {
-      imagePath = `/uploads/${req.file.filename}`;
-    }
-    
-    // Handle subcategory if provided
-    let finalSubcategoryId = subcategory_id ? parseInt(subcategory_id) : null;
-    
-    if (!finalSubcategoryId && subcategory_name && finalCategoryId) {
-      // Check if subcategory exists
-      const [existingSubcategories] = await db.execute('SELECT id FROM subcategories WHERE name = ? AND category_id = ?', [subcategory_name, finalCategoryId]);
       
-      if (existingSubcategories.length > 0) {
-        finalSubcategoryId = existingSubcategories[0].id;
-      } else if (subcategory_name) {
-        // Create new subcategory
-        const [newSubcategory] = await db.execute('INSERT INTO subcategories (name, category_id) VALUES (?, ?)', [subcategory_name, finalCategoryId]);
-        finalSubcategoryId = newSubcategory.insertId;
+      const hierarchy = positionCheck[0];
+      
+      // Validate hierarchy consistency
+      if (safeParams.shelf_id && safeParams.shelf_id != hierarchy.shelf_id) {
+        return res.status(400).json({ message: 'Shelf ID does not match position hierarchy' });
+      }
+      if (safeParams.cabinet_id && safeParams.cabinet_id != hierarchy.cabinet_id) {
+        return res.status(400).json({ message: 'Cabinet ID does not match position hierarchy' });
+      }
+      if (safeParams.location_id && safeParams.location_id != hierarchy.location_id) {
+        return res.status(400).json({ message: 'Location ID does not match position hierarchy' });
+      }
+      if (safeParams.subcategory_id && safeParams.subcategory_id != hierarchy.subcategory_id) {
+        return res.status(400).json({ message: 'Subcategory ID does not match position hierarchy' });
+      }
+      if (safeParams.category_id && safeParams.category_id != hierarchy.category_id) {
+        return res.status(400).json({ message: 'Category ID does not match position hierarchy' });
       }
     }
     
-    // Handle position if provided
-    let finalPositionId = null;
-    if (position_id) {
-      const [positions] = await db.execute('SELECT id, subcategory_id FROM positions WHERE id = ?', [parseInt(position_id)]);
-      if (positions.length > 0) {
-        // Optional: ensure position belongs to selected subcategory
-        if (!finalSubcategoryId || positions[0].subcategory_id === finalSubcategoryId) {
-          finalPositionId = positions[0].id;
-        }
-      }
-    }
-
-    // Insert archive
-    const [result] = await db.execute(
-      'INSERT INTO archives (title, description, category_id, subcategory_id, position_id, date, location, image, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [title, description, finalCategoryId, finalSubcategoryId, finalPositionId, date, location, imagePath, req.userId]
-    );
+    // Insert archive into archives table with new structure
+    const [result] = await db.execute(`
+      INSERT INTO archives (title, description, date, image, category_id, subcategory_id, location_id, cabinet_id, shelf_id, position_id, created_by, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+    `, [
+      safeParams.title, 
+      safeParams.description, 
+      safeParams.date, 
+      safeParams.image, 
+      safeParams.category_id, 
+      safeParams.subcategory_id, 
+      safeParams.location_id, 
+      safeParams.cabinet_id, 
+      safeParams.shelf_id, 
+      safeParams.position_id, 
+      created_by
+    ]);
     
     const archiveId = result.insertId;
     
-
+    console.log('Archive created successfully with ID:', archiveId);
     
-    res.status(201).json({ 
-      message: 'Archive created successfully', 
-      id: archiveId 
+    // Fetch the created archive with hierarchy information
+    const [createdArchive] = await db.execute(`
+      SELECT a.*, 
+             c.name as category_name,
+             s.name as subcategory_name,
+             l.name as location_name,
+             cab.name as cabinet_name,
+             sh.name as shelf_name,
+             p.name as position_name,
+             admin.name as created_by_name
+      FROM archives a 
+      LEFT JOIN categories c ON a.category_id = c.id
+      LEFT JOIN subcategories s ON a.subcategory_id = s.id
+      LEFT JOIN locations l ON a.location_id = l.id
+      LEFT JOIN cabinets cab ON a.cabinet_id = cab.id
+      LEFT JOIN shelves sh ON a.shelf_id = sh.id
+      LEFT JOIN positions p ON a.position_id = p.id
+      LEFT JOIN admin ON a.created_by = admin.id 
+      WHERE a.id = ?
+    `, [archiveId]);
+    
+    const archive = createdArchive[0];
+    
+    // Add location hierarchy information
+    archive.location_hierarchy = {
+      category: archive.category_name,
+      subcategory: archive.subcategory_name,
+      location: archive.location_name,
+      cabinet: archive.cabinet_name,
+      shelf: archive.shelf_name,
+      position: archive.position_name
+    };
+    
+    res.status(201).json({
+      success: true,
+      message: 'Archive created successfully',
+      data: archive
     });
   } catch (error) {
     console.error('Error creating archive:', error);
@@ -225,95 +265,142 @@ exports.createArchive = async (req, res) => {
   }
 };
 
+
 // Update archive
 exports.updateArchive = async (req, res) => {
   try {
-    // Only admin can update archives
-    if (!req.isAdmin) {
-      return res.status(403).json({ message: 'Forbidden: Admin access required' });
-    }
-    
     const { id } = req.params;
-    const { title, description, category_id, category_name, subcategory_id, subcategory_name, position_id, date, location } = req.body;
+    const { 
+      title, 
+      description, 
+      date, 
+      image, 
+      category_id, 
+      subcategory_id, 
+      location_id, 
+      cabinet_id, 
+      shelf_id, 
+      position_id 
+    } = req.body;
+    
+    // Convert undefined to null for database compatibility
+    const safeParams = {
+      title: title || null,
+      description: description || null,
+      date: date || null,
+      image: image || null,
+      category_id: category_id || null,
+      subcategory_id: subcategory_id || null,
+      location_id: location_id || null,
+      cabinet_id: cabinet_id || null,
+      shelf_id: shelf_id || null,
+      position_id: position_id || null
+    };
+    
+    console.log('Updating archive with data:', { id, ...safeParams });
     
     // Check if archive exists
-    const [archives] = await db.execute('SELECT * FROM archives WHERE id = ?', [id]);
+    const [existingArchive] = await db.execute('SELECT * FROM archives WHERE id = ?', [id]);
     
-    if (archives.length === 0) {
+    if (existingArchive.length === 0) {
       return res.status(404).json({ message: 'Archive not found' });
     }
     
-    const archive = archives[0];
-    
-    // Handle category - use existing ID or create new category
-    let finalCategoryId = category_id ? parseInt(category_id) : archive.category_id;
-    
-    if (!finalCategoryId && category_name) {
-      // Check if category exists
-      const [existingCategories] = await db.execute('SELECT id FROM categories WHERE name = ?', [category_name]);
+    // Validate hierarchy consistency if position_id is provided
+    if (safeParams.position_id) {
+      const [positionCheck] = await db.execute(`
+        SELECT p.id, p.shelf_id, sh.cabinet_id, cab.location_id, l.subcategory_id, s.category_id
+        FROM positions p
+        LEFT JOIN shelves sh ON p.shelf_id = sh.id
+        LEFT JOIN cabinets cab ON sh.cabinet_id = cab.id
+        LEFT JOIN locations l ON cab.location_id = l.id
+        LEFT JOIN subcategories s ON l.subcategory_id = s.id
+        WHERE p.id = ?
+      `, [safeParams.position_id]);
       
-      if (existingCategories.length > 0) {
-        finalCategoryId = existingCategories[0].id;
-      } else {
-        // Create new category
-        const [newCategory] = await db.execute('INSERT INTO categories (name) VALUES (?)', [category_name]);
-        finalCategoryId = newCategory.insertId;
+      if (positionCheck.length === 0) {
+        return res.status(400).json({ message: 'Invalid position_id: Position does not exist' });
       }
-    }
-    
-    // Set image path if file was uploaded
-    let imagePath = archive.image;
-    if (req.file) {
-      // Delete old image if exists
-      if (archive.image) {
-        const oldImagePath = path.join(__dirname, '..', archive.image);
-        if (fs.existsSync(oldImagePath)) {
-          fs.unlinkSync(oldImagePath);
-        }
-      }
-      imagePath = `/uploads/${req.file.filename}`;
-    }
-    
-    // Handle subcategory if provided
-    let finalSubcategoryId = subcategory_id ? parseInt(subcategory_id) : archive.subcategory_id;
-    
-    if (!finalSubcategoryId && subcategory_name && finalCategoryId) {
-      // Check if subcategory exists
-      const [existingSubcategories] = await db.execute('SELECT id FROM subcategories WHERE name = ? AND category_id = ?', [subcategory_name, finalCategoryId]);
       
-      if (existingSubcategories.length > 0) {
-        finalSubcategoryId = existingSubcategories[0].id;
-      } else if (subcategory_name) {
-        // Create new subcategory
-        const [newSubcategory] = await db.execute('INSERT INTO subcategories (name, category_id) VALUES (?, ?)', [subcategory_name, finalCategoryId]);
-        finalSubcategoryId = newSubcategory.insertId;
+      const hierarchy = positionCheck[0];
+      
+      // Validate hierarchy consistency
+      if (safeParams.shelf_id && safeParams.shelf_id != hierarchy.shelf_id) {
+        return res.status(400).json({ message: 'Shelf ID does not match position hierarchy' });
+      }
+      if (safeParams.cabinet_id && safeParams.cabinet_id != hierarchy.cabinet_id) {
+        return res.status(400).json({ message: 'Cabinet ID does not match position hierarchy' });
+      }
+      if (safeParams.location_id && safeParams.location_id != hierarchy.location_id) {
+        return res.status(400).json({ message: 'Location ID does not match position hierarchy' });
+      }
+      if (safeParams.subcategory_id && safeParams.subcategory_id != hierarchy.subcategory_id) {
+        return res.status(400).json({ message: 'Subcategory ID does not match position hierarchy' });
+      }
+      if (safeParams.category_id && safeParams.category_id != hierarchy.category_id) {
+        return res.status(400).json({ message: 'Category ID does not match position hierarchy' });
       }
     }
     
-    // Handle position if provided
-    let finalPositionId = archive.position_id;
-    if (position_id !== undefined) {
-      if (position_id) {
-        const [positions] = await db.execute('SELECT id, subcategory_id FROM positions WHERE id = ?', [parseInt(position_id)]);
-        if (positions.length > 0) {
-          if (!finalSubcategoryId || positions[0].subcategory_id === finalSubcategoryId) {
-            finalPositionId = positions[0].id;
-          }
-        }
-      } else {
-        finalPositionId = null;
-      }
-    }
-
-    // Update archive
-    await db.execute(
-      'UPDATE archives SET title = ?, description = ?, category_id = ?, subcategory_id = ?, position_id = ?, date = ?, location = ?, image = ? WHERE id = ?',
-      [title, description, finalCategoryId, finalSubcategoryId, finalPositionId, date, location, imagePath, id]
-    );
+    // Update archive in archives table
+    await db.execute(`
+      UPDATE archives 
+      SET title = ?, description = ?, date = ?, image = ?, category_id = ?, subcategory_id = ?, location_id = ?, cabinet_id = ?, shelf_id = ?, position_id = ?, updated_at = NOW()
+      WHERE id = ?
+    `, [
+      safeParams.title, 
+      safeParams.description, 
+      safeParams.date, 
+      safeParams.image, 
+      safeParams.category_id, 
+      safeParams.subcategory_id, 
+      safeParams.location_id, 
+      safeParams.cabinet_id, 
+      safeParams.shelf_id, 
+      safeParams.position_id, 
+      id
+    ]);
     
-
+    console.log('Archive updated successfully with ID:', id);
     
-    res.status(200).json({ message: 'Archive updated successfully' });
+    // Fetch the updated archive with hierarchy information
+    const [updatedArchive] = await db.execute(`
+      SELECT a.*, 
+             c.name as category_name,
+             s.name as subcategory_name,
+             l.name as location_name,
+             cab.name as cabinet_name,
+             sh.name as shelf_name,
+             p.name as position_name,
+             admin.name as created_by_name
+      FROM archives a 
+      LEFT JOIN categories c ON a.category_id = c.id
+      LEFT JOIN subcategories s ON a.subcategory_id = s.id
+      LEFT JOIN locations l ON a.location_id = l.id
+      LEFT JOIN cabinets cab ON a.cabinet_id = cab.id
+      LEFT JOIN shelves sh ON a.shelf_id = sh.id
+      LEFT JOIN positions p ON a.position_id = p.id
+      LEFT JOIN admin ON a.created_by = admin.id 
+      WHERE a.id = ?
+    `, [id]);
+    
+    const archive = updatedArchive[0];
+    
+    // Add location hierarchy information
+    archive.location_hierarchy = {
+      category: archive.category_name,
+      subcategory: archive.subcategory_name,
+      location: archive.location_name,
+      cabinet: archive.cabinet_name,
+      shelf: archive.shelf_name,
+      position: archive.position_name
+    };
+    
+    res.status(200).json({
+      success: true,
+      message: 'Archive updated successfully',
+      data: archive
+    });
   } catch (error) {
     console.error('Error updating archive:', error);
     res.status(500).json({ message: 'Server error while updating archive' });
@@ -323,11 +410,6 @@ exports.updateArchive = async (req, res) => {
 // Delete archive
 exports.deleteArchive = async (req, res) => {
   try {
-    // Only admin can delete archives
-    if (!req.isAdmin) {
-      return res.status(403).json({ message: 'Forbidden: Admin access required' });
-    }
-    
     const { id } = req.params;
     
     // Check if archive exists
@@ -337,20 +419,13 @@ exports.deleteArchive = async (req, res) => {
       return res.status(404).json({ message: 'Archive not found' });
     }
     
-    const archive = archives[0];
-    
-    // Delete image if exists
-    if (archive.image) {
-      const imagePath = path.join(__dirname, '..', archive.image);
-      if (fs.existsSync(imagePath)) {
-        fs.unlinkSync(imagePath);
-      }
-    }
-    
-    // Delete archive (archive_tags will be deleted automatically due to CASCADE constraint)
+    // Delete archive directly from archives table
     await db.execute('DELETE FROM archives WHERE id = ?', [id]);
     
-    res.status(200).json({ message: 'Archive deleted successfully' });
+    res.status(200).json({ 
+      success: true,
+      message: 'Archive deleted successfully' 
+    });
   } catch (error) {
     console.error('Error deleting archive:', error);
     res.status(500).json({ message: 'Server error while deleting archive' });

@@ -1,6 +1,8 @@
 import axios from 'axios';
 
-export const BASE_URL = 'http://localhost:5000';
+// Allow overriding API base via environment variable to avoid port conflicts.
+// Set VITE_API_BASE_URL in your frontend environment (e.g., http://localhost:5001)
+export const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
 export const API_URL = `${BASE_URL}/api`;
 
 const api = axios.create({

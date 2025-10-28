@@ -36,24 +36,7 @@ const ArchiveModal: React.FC<ArchiveModalProps> = ({ archive, isOpen, onClose, o
                 alt={archive.title}
                 className="w-full h-64 lg:h-80 object-cover"
               />
-              <div className="absolute top-4 right-4 flex flex-col gap-2">
-                <Badge className="bg-dinus-primary text-white text-sm">
-                  {archive.category?.name}
-                </Badge>
-                {archive.subcategory && (
-                  <Badge className="bg-dinus-primary-light text-white text-sm">
-                    {archive.subcategory.name}
-                  </Badge>
-                )}
-                {archive.position && (
-                  <Badge className="bg-dinus-secondary text-white text-sm">
-                    {archive.position.name}
-                  </Badge>
-                )}
-              </div>
             </div>
-            
-
           </div>
 
           {/* Info Section */}
@@ -70,16 +53,6 @@ const ArchiveModal: React.FC<ArchiveModalProps> = ({ archive, isOpen, onClose, o
             {/* Metadata */}
             <div className="space-y-4">
               <div className="grid grid-cols-1 gap-3">
-                {archive.location && (
-                  <div className="flex items-center gap-3 p-3 bg-dinus-gray/50 rounded-lg">
-                    <MapPin className="w-5 h-5 text-dinus-primary" />
-                    <div>
-                      <p className="text-sm font-medium text-dinus-text">Lokasi</p>
-                      <p className="text-sm text-dinus-text/70">{archive.location}</p>
-                    </div>
-                  </div>
-                )}
-
                 <div className="flex items-center gap-3 p-3 bg-dinus-gray/50 rounded-lg">
                   <Calendar className="w-5 h-5 text-dinus-primary" />
                   <div>
@@ -95,13 +68,106 @@ const ArchiveModal: React.FC<ArchiveModalProps> = ({ archive, isOpen, onClose, o
                   </div>
                 </div>
                 
-                {archive.position && (
-                  <div className="flex items-center gap-3 p-3 bg-dinus-gray/50 rounded-lg">
-                    <div className="w-5 h-5 text-dinus-secondary flex items-center justify-center font-bold">P</div>
-                    <div>
-                      <p className="text-sm font-medium text-dinus-text">Posisi</p>
-                      <p className="text-sm text-dinus-text/70">{archive.position.name}</p>
-                    </div>
+                {/* Static Hierarchical Fields */}
+                {(archive.category_id || archive.subcategory_id || archive.location_id || archive.cabinet_id || archive.shelf_id || archive.position_id) && (
+                  <div className="space-y-2">
+                    <h3 className="text-sm font-semibold text-dinus-text mb-2">Lokasi Hierarki</h3>
+                    
+                    {/* Display location hierarchy if available */}
+                    {archive.location_hierarchy && (
+                      <div className="flex items-start gap-3 p-3 bg-dinus-gray/50 rounded-lg">
+                        <MapPin className="w-5 h-5 text-dinus-primary mt-0.5" />
+                        <div className="flex-1">
+                          <p className="text-sm font-medium text-dinus-text mb-2">Hierarki Lokasi</p>
+                          <div className="text-sm text-dinus-text/70 space-y-1">
+                            {archive.location_hierarchy.category && (
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">Kategori</span>
+                                <span>{archive.location_hierarchy.category}</span>
+                              </div>
+                            )}
+                            {archive.location_hierarchy.subcategory && (
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">Sub Kategori</span>
+                                <span>{archive.location_hierarchy.subcategory}</span>
+                              </div>
+                            )}
+                            {archive.location_hierarchy.location && (
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded">Lokasi</span>
+                                <span>{archive.location_hierarchy.location}</span>
+                              </div>
+                            )}
+                            {archive.location_hierarchy.cabinet && (
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded">Lemari</span>
+                                <span>{archive.location_hierarchy.cabinet}</span>
+                              </div>
+                            )}
+                            {archive.location_hierarchy.shelf && (
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded">Rak</span>
+                                <span>{archive.location_hierarchy.shelf}</span>
+                              </div>
+                            )}
+                            {archive.location_hierarchy.position && (
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs bg-red-100 text-red-800 px-2 py-1 rounded">Posisi</span>
+                                <span>{archive.location_hierarchy.position}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Fallback display for individual IDs if hierarchy object is not available */}
+                    {!archive.location_hierarchy && (
+                      <div className="flex items-start gap-3 p-3 bg-dinus-gray/50 rounded-lg">
+                        <MapPin className="w-5 h-5 text-dinus-primary mt-0.5" />
+                        <div className="flex-1">
+                          <p className="text-sm font-medium text-dinus-text mb-2">Lokasi</p>
+                          <div className="text-sm text-dinus-text/70 space-y-1">
+                            {archive.category_id && (
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">Kategori ID</span>
+                                <span>{archive.category_id}</span>
+                              </div>
+                            )}
+                            {archive.subcategory_id && (
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">Sub Kategori ID</span>
+                                <span>{archive.subcategory_id}</span>
+                              </div>
+                            )}
+                            {archive.location_id && (
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded">Lokasi ID</span>
+                                <span>{archive.location_id}</span>
+                              </div>
+                            )}
+                            {archive.cabinet_id && (
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded">Lemari ID</span>
+                                <span>{archive.cabinet_id}</span>
+                              </div>
+                            )}
+                            {archive.shelf_id && (
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded">Rak ID</span>
+                                <span>{archive.shelf_id}</span>
+                              </div>
+                            )}
+                            {archive.position_id && (
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs bg-red-100 text-red-800 px-2 py-1 rounded">Posisi ID</span>
+                                <span>{archive.position_id}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

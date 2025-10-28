@@ -4,15 +4,15 @@ const router = express.Router();
 // Import route modules
 const authRoutes = require('./auth.routes');
 const archiveRoutes = require('./archive.routes');
-const categoryRoutes = require('./category.routes');
-const subcategoryRoutes = require('./subcategory.routes');
-const positionRoutes = require('./position.routes');
+const letterRoutes = require('./letter.routes');
+const educationRoutes = require('./education.routes');
+const staticFieldRoutes = require('./staticField.routes');
 
 // Mount routes
 router.use('/auth', authRoutes);
 router.use('/archives', archiveRoutes);
-router.use('/categories', categoryRoutes);
-router.use('/subcategories', subcategoryRoutes);
-router.use('/positions', positionRoutes);
+router.use('/letters', letterRoutes);
+router.use('/education', educationRoutes);
+router.use('/static-fields', staticFieldRoutes);
 
 module.exports = router;

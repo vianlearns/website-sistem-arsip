@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Archive, Category, ArchiveFilters } from '@/types/archive.types';
+import { Archive, ArchiveFilter } from '@/types/archive.types';
 import ArchiveService from '@/services/archive.service';
 import { useToast } from '@/hooks/use-toast';
 
-export const useArchives = (filters?: ArchiveFilters, page: number = 1, limit: number = 10) => {
+export const useArchives = (filters?: ArchiveFilter, page: number = 1, limit: number = 10) => {
   const [archives, setArchives] = useState<Archive[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -100,49 +100,7 @@ export const useArchive = (id: number) => {
   };
 };
 
-export const useCategories = () => {
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
-  const { toast } = useToast();
 
-  const fetchCategories = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      const response = await ArchiveService.getCategories();
-      if (Array.isArray(response)) {
-        // Format respons lama
-        setCategories(response);
-      } else if (response && response.data) {
-        // Format respons baru
-        setCategories(response.data);
-      }
-    } catch (error: any) {
-      const errorMessage = error.response?.data?.message || 'Gagal memuat kategori';
-      setError(errorMessage);
-      toast({
-        title: "Error",
-        description: errorMessage,
-        variant: "destructive"
-      });
-    } finally {
-      setLoading(false);
-    }
-  }, [toast]);
-
-  useEffect(() => {
-    fetchCategories();
-  }, [fetchCategories]);
-
-  return {
-    categories,
-    loading,
-    error,
-    fetchCategories
-  };
-};
 
 
 

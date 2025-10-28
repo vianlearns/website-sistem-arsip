@@ -1,19 +1,25 @@
 import api from '@/lib/api';
-import { Archive, CreateArchiveDTO, UpdateArchiveDTO, ArchiveFilters, PaginatedResponse } from '@/types/archive.types';
+import { Archive, CreateArchiveDTO, UpdateArchiveDTO, ArchiveFilter, PaginatedResponse } from '@/types/archive.types';
 
 const ArchiveService = {
   // Get all archives with optional filters
-  getAllArchives: async (filters?: ArchiveFilters, page: number = 1, limit: number = 10) => {
+  getAllArchives: async (filters?: ArchiveFilter, page: number = 1, limit: number = 10) => {
     try {
       const params = new URLSearchParams();
       
       if (filters) {
+        if (filters.title) params.append('title', filters.title);
+        if (filters.date_from) params.append('date_from', filters.date_from);
+        if (filters.date_to) params.append('date_to', filters.date_to);
+        if (filters.is_active !== undefined) params.append('is_active', filters.is_active.toString());
+        
+        // Handle static hierarchical fields
         if (filters.category_id) params.append('category_id', filters.category_id.toString());
         if (filters.subcategory_id) params.append('subcategory_id', filters.subcategory_id.toString());
+        if (filters.location_id) params.append('location_id', filters.location_id.toString());
+        if (filters.cabinet_id) params.append('cabinet_id', filters.cabinet_id.toString());
+        if (filters.shelf_id) params.append('shelf_id', filters.shelf_id.toString());
         if (filters.position_id) params.append('position_id', filters.position_id.toString());
-        if (filters.search) params.append('search', filters.search);
-        if (filters.start_date) params.append('start_date', filters.start_date);
-        if (filters.end_date) params.append('end_date', filters.end_date);
       }
       
       params.append('page', page.toString());
@@ -31,7 +37,7 @@ const ArchiveService = {
   getArchiveById: async (id: number): Promise<Archive> => {
     try {
       const response = await api.get(`/archives/${id}`);
-      return response.data.data;
+      return response.data;
     } catch (error) {
       console.error(`Error fetching archive ${id}:`, error);
       throw error;
@@ -50,15 +56,27 @@ const ArchiveService = {
       
       formData.append('title', archiveData.title);
       if (archiveData.description) formData.append('description', archiveData.description);
-      if (archiveData.category_id) formData.append('category_id', archiveData.category_id.toString());
-      if (archiveData.category_name) formData.append('category_name', archiveData.category_name);
-      if (archiveData.subcategory_id) formData.append('subcategory_id', archiveData.subcategory_id.toString());
-      if (archiveData.subcategory_name) formData.append('subcategory_name', archiveData.subcategory_name);
-      if (archiveData.position_id) formData.append('position_id', archiveData.position_id.toString());
       if (archiveData.date) formData.append('date', archiveData.date);
-      if (archiveData.location) formData.append('location', archiveData.location);
       
-
+      // Handle static hierarchical fields
+      if (archiveData.category_id) {
+        formData.append('category_id', archiveData.category_id.toString());
+      }
+      if (archiveData.subcategory_id) {
+        formData.append('subcategory_id', archiveData.subcategory_id.toString());
+      }
+      if (archiveData.location_id) {
+        formData.append('location_id', archiveData.location_id.toString());
+      }
+      if (archiveData.cabinet_id) {
+        formData.append('cabinet_id', archiveData.cabinet_id.toString());
+      }
+      if (archiveData.shelf_id) {
+        formData.append('shelf_id', archiveData.shelf_id.toString());
+      }
+      if (archiveData.position_id) {
+        formData.append('position_id', archiveData.position_id.toString());
+      }
       
       const response = await api.post('/archives', formData, {
         headers: {
@@ -85,15 +103,27 @@ const ArchiveService = {
       
       if (archiveData.title) formData.append('title', archiveData.title);
       if (archiveData.description !== undefined) formData.append('description', archiveData.description || '');
-      if (archiveData.category_id !== undefined) formData.append('category_id', archiveData.category_id?.toString() || '');
-      if (archiveData.category_name) formData.append('category_name', archiveData.category_name);
-      if (archiveData.subcategory_id !== undefined) formData.append('subcategory_id', archiveData.subcategory_id?.toString() || '');
-      if (archiveData.subcategory_name) formData.append('subcategory_name', archiveData.subcategory_name);
-      if (archiveData.position_id !== undefined) formData.append('position_id', archiveData.position_id?.toString() || '');
       if (archiveData.date !== undefined) formData.append('date', archiveData.date || '');
-      if (archiveData.location !== undefined) formData.append('location', archiveData.location || '');
       
-
+      // Handle static hierarchical fields
+      if (archiveData.category_id !== undefined) {
+        formData.append('category_id', archiveData.category_id.toString());
+      }
+      if (archiveData.subcategory_id !== undefined) {
+        formData.append('subcategory_id', archiveData.subcategory_id.toString());
+      }
+      if (archiveData.location_id !== undefined) {
+        formData.append('location_id', archiveData.location_id.toString());
+      }
+      if (archiveData.cabinet_id !== undefined) {
+        formData.append('cabinet_id', archiveData.cabinet_id.toString());
+      }
+      if (archiveData.shelf_id !== undefined) {
+        formData.append('shelf_id', archiveData.shelf_id.toString());
+      }
+      if (archiveData.position_id !== undefined) {
+        formData.append('position_id', archiveData.position_id.toString());
+      }
       
       const response = await api.put(`/archives/${id}`, formData, {
         headers: {
@@ -114,24 +144,6 @@ const ArchiveService = {
       await api.delete(`/archives/${id}`);
     } catch (error) {
       console.error(`Error deleting archive ${id}:`, error);
-      throw error;
-    }
-  },
-
-  // Get all categories
-  getCategories: async () => {
-    try {
-      const response = await api.get('/categories');
-      // Handle both old and new response formats
-      if (response.data && response.data.success && response.data.data) {
-        // New format with success and data fields
-        return response.data.data;
-      } else {
-        // Old format where data is directly in response.data
-        return response.data;
-      }
-    } catch (error) {
-      console.error('Error fetching categories:', error);
       throw error;
     }
   },

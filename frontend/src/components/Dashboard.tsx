@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from '@/hooks/use-toast';
 import { getImageUrl } from '@/lib/api';
-import { Archive as ArchiveType, Position } from '@/types/archive.types';
+import { Archive as ArchiveType } from '@/types/archive.types';
 import { 
   Archive, 
   Plus, 
@@ -22,20 +22,26 @@ import {
   Trash2,
   Settings,
   Save,
-  X
+  X,
+  Mail,
+  Filter,
+  FilterX
 } from 'lucide-react';
 import ArchiveService from "@/services/archive.service";
-import CategoryService from "@/services/category.service";
-import SubCategoryService from "@/services/subcategory.service";
-import PositionService from "@/services/position.service";
-import { useArchives, useArchiveOperations, useCategories } from '@/hooks/useArchives';
-import { useSubCategoryOperations, useSubCategories } from '@/hooks/useSubCategories';
+import { useArchives, useArchiveOperations } from '@/hooks/useArchives';
 import ArchiveModal from './ArchiveModal';
+import FieldContentManagement from './FieldContentManagement';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-
-import CategoryModal from './CategoryModal';
+import { useStaticFields } from '@/hooks/useStaticFields';
+import { 
+  Select, 
+  SelectContent, 
+  SelectItem, 
+  SelectTrigger, 
+  SelectValue 
+} from "@/components/ui/select";
 
 const Dashboard = () => {
   const { user, logout, isAuthenticated, isAdmin } = useAuth();
@@ -45,16 +51,19 @@ const Dashboard = () => {
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
-  const [selectedSubCategory, setSelectedSubCategory] = useState<number | null>(null);
-  const [selectedPosition, setSelectedPosition] = useState<number | null>(null);
   const [showArchiveModal, setShowArchiveModal] = useState(false);
   const [showArchiveForm, setShowArchiveForm] = useState(false);
-  const [showCategoryModal, setShowCategoryModal] = useState(false);
+  const [showFieldContentManagement, setShowFieldContentManagement] = useState(false);
   const [selectedArchive, setSelectedArchive] = useState<ArchiveType | null>(null);
   const [editingArchive, setEditingArchive] = useState<ArchiveType | null>(null);
-  const [subCategories, setSubCategories] = useState<any[]>([]);
-  const [positions, setPositions] = useState<any[]>([]);
+  
+  // Filter states
+  const [filterCategory, setFilterCategory] = useState<string>('');
+  const [filterSubcategory, setFilterSubcategory] = useState<string>('');
+  const [filterLocation, setFilterLocation] = useState<string>('');
+  const [filterDateFrom, setFilterDateFrom] = useState<string>('');
+  const [filterDateTo, setFilterDateTo] = useState<string>('');
+  const [showFilters, setShowFilters] = useState(false);
 
   useEffect(() => {
     const handler = setTimeout(() => {
@@ -66,65 +75,48 @@ const Dashboard = () => {
     };
   }, [searchTerm]);
 
-  const filters = useMemo(() => ({
-    category_id: selectedCategory || undefined,
-    subcategory_id: selectedSubCategory || undefined,
-    position_id: selectedPosition || undefined,
-    search: debouncedSearchTerm || undefined
-  }), [selectedCategory, selectedSubCategory, selectedPosition, debouncedSearchTerm]);
-
-  const { archives, loading, refreshArchives } = useArchives(filters);
-  const { categories } = useCategories();
-  const { deleteArchive } = useArchiveOperations();
-  const { getSubCategories } = useSubCategoryOperations();
-  
-  // Load subcategories when category changes
+  // Reset child filters when parent filter changes
   useEffect(() => {
-    const loadSubCategories = async () => {
-      if (selectedCategory) {
-        const data = await getSubCategories(selectedCategory);
-        setSubCategories(data || []);
-      } else {
-        // Mengambil semua subkategori dari semua kategori
-        const allSubCategories = [];
-        if (categories) {
-          for (const category of categories) {
-            const subCats = await getSubCategories(category.id);
-            if (subCats) {
-              allSubCategories.push(...subCats);
-            }
-          }
-        }
-        setSubCategories(allSubCategories);
-        setSelectedSubCategory(null);
+    if (filterCategory) {
+      setFilterSubcategory('');
+      setFilterLocation('');
+    }
+  }, [filterCategory]);
+
+  useEffect(() => {
+    if (filterSubcategory) {
+      setFilterLocation('');
+    }
+  }, [filterSubcategory]);
+
+  // Keyboard shortcut for filter toggle
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.ctrlKey && event.key === 'f') {
+        event.preventDefault();
+        setShowFilters(!showFilters);
       }
     };
-    
-    loadSubCategories();
-  // Menghapus getSubCategories dari dependensi untuk mencegah loop tak terbatas
-  }, [selectedCategory, categories]);
 
-  useEffect(() => {
-    if (selectedSubCategory) {
-      const fetchPositions = async () => {
-        try {
-          const response = await PositionService.getPositionsBySubcategoryId(selectedSubCategory);
-          setPositions(response);
-        } catch (error) {
-          console.error('Error fetching positions:', error);
-          toast({
-            title: "Error",
-            description: "Gagal mengambil data posisi",
-            variant: "destructive",
-          });
-        }
-      };
-      fetchPositions();
-    } else {
-      setPositions([]);
-      setSelectedPosition(null);
-    }
-  }, [selectedSubCategory]);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [showFilters]);
+
+  const filters = useMemo(() => ({
+    search: debouncedSearchTerm,
+  }), [debouncedSearchTerm]);
+
+  const { archives, loading, refreshArchives } = useArchives(filters);
+  const { 
+    categories, 
+    subcategories, 
+    locations, 
+    cabinets, 
+    shelves, 
+    positions,
+    loading: staticFieldsLoading 
+  } = useStaticFields();
+  const { deleteArchive } = useArchiveOperations();
 
   const handleDeleteArchive = async (id: number, title: string) => {
     try {
@@ -149,9 +141,50 @@ const Dashboard = () => {
     setShowArchiveModal(true);
   };
 
-  const filteredArchives = archives;
+  const clearAllFilters = () => {
+    setFilterCategory('');
+    setFilterSubcategory('');
+    setFilterLocation('');
+    setFilterDateFrom('');
+    setFilterDateTo('');
+    setSearchTerm('');
+  };
 
-  const categoryNames = categories ? categories.map(cat => cat.name) : [];
+  const hasActiveFilters = filterCategory || filterSubcategory || filterLocation || filterDateFrom || filterDateTo;
+
+  // Advanced filtering logic
+  const filteredArchives = useMemo(() => {
+    return archives.filter(archive => {
+      // Search term filter
+      const matchesSearch = !debouncedSearchTerm || 
+        archive.title.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
+        archive.description.toLowerCase().includes(debouncedSearchTerm.toLowerCase());
+
+      // Category filter
+      const matchesCategory = !filterCategory || 
+        archive.category_id?.toString() === filterCategory;
+
+      // Subcategory filter
+      const matchesSubcategory = !filterSubcategory || 
+        archive.subcategory_id?.toString() === filterSubcategory;
+
+      // Location filter
+      const matchesLocation = !filterLocation || 
+        archive.location_id?.toString() === filterLocation;
+
+      // Date range filter
+      const archiveDate = new Date(archive.created_at);
+      const matchesDateFrom = !filterDateFrom || 
+        archiveDate >= new Date(filterDateFrom);
+      const matchesDateTo = !filterDateTo || 
+        archiveDate <= new Date(filterDateTo + 'T23:59:59');
+
+      return matchesSearch && matchesCategory && matchesSubcategory && 
+             matchesLocation && matchesDateFrom && matchesDateTo;
+    });
+  }, [archives, debouncedSearchTerm, filterCategory, filterSubcategory, filterLocation, filterDateFrom, filterDateTo]);
+
+  const fieldCount = categories.length + subcategories.length + locations.length + cabinets.length + shelves.length + positions.length;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-dinus-primary/5 via-dinus-secondary/10 to-dinus-gray relative">
@@ -193,6 +226,15 @@ const Dashboard = () => {
                   <Button
                     variant="outline"
                     size="sm"
+                    onClick={() => navigate('/surat')}
+                    className="border-dinus-primary/20 text-dinus-primary hover:bg-dinus-primary hover:text-white"
+                  >
+                    <Mail className="w-4 h-4 mr-2" />
+                    Surat
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
                     onClick={logout}
                     className="border-dinus-primary/20 text-dinus-primary hover:bg-dinus-primary hover:text-white"
                   >
@@ -201,15 +243,26 @@ const Dashboard = () => {
                   </Button>
                 </>
               ) : (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => navigate('/admin')}
-                  className="border-dinus-primary/20 text-dinus-primary hover:bg-dinus-primary hover:text-white"
-                >
-                  <User className="w-4 h-4 mr-2" />
-                  Login Admin
-                </Button>
+                <div className="flex items-center space-x-3">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => navigate('/surat')}
+                    className="border-dinus-primary/20 text-dinus-primary hover:bg-dinus-primary hover:text-white"
+                  >
+                    <Mail className="w-4 h-4 mr-2" />
+                    Surat
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => navigate('/admin')}
+                    className="border-dinus-primary/20 text-dinus-primary hover:bg-dinus-primary hover:text-white"
+                  >
+                    <User className="w-4 h-4 mr-2" />
+                    Login Admin
+                  </Button>
+                </div>
               )}
             </div>
           </div>
@@ -239,8 +292,8 @@ const Dashboard = () => {
                   <Camera className="w-6 h-6 text-dinus-primary" />
                 </div>
                 <div>
-                  <p className="text-sm text-dinus-text/60">Kategori</p>
-                  <p className="text-2xl font-bold text-dinus-text">{categories?.length || 0}</p>
+                  <p className="text-sm text-dinus-text/60">Field Tersedia</p>
+                  <p className="text-2xl font-bold text-dinus-text">{fieldCount}</p>
                 </div>
               </div>
             </CardContent>
@@ -254,7 +307,7 @@ const Dashboard = () => {
                 <div>
                   <p className="text-sm text-dinus-text/60">Arsip Terbaru</p>
                   <p className="text-lg font-semibold text-dinus-text">
-                    {archives.length > 0 ? new Date(archives[0].date).toLocaleDateString('id-ID') : '-'}
+                    {archives.length > 0 ? new Date(archives[0].created_at).toLocaleDateString('id-ID') : '-'}
                   </p>
                 </div>
               </div>
@@ -264,98 +317,206 @@ const Dashboard = () => {
 
         {/* Controls */}
         <div className="flex flex-col gap-4 mb-8">
-          <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-dinus-text/40" />
-            <Input
-              placeholder="Cari arsip berdasarkan judul, deskripsi, atau tag..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 h-12 border-2 focus:border-dinus-primary"
-            />
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <div className="flex flex-col sm:flex-row gap-2 w-full">
-              <select
-                value={selectedCategory || ''}
-                onChange={(e) => setSelectedCategory(e.target.value ? Number(e.target.value) : null)}
-                className="px-4 py-3 border-2 border-input rounded-lg focus:border-dinus-primary outline-none bg-white w-full"
-              >
-                <option value="">Semua Kategori</option>
-                {categories && categories.map(category => (
-                  <option key={category.id} value={category.id}>{category.name}</option>
-                ))}
-              </select>
-              
-              {selectedCategory !== null && (
-                <select
-                  value={selectedSubCategory === null ? '' : selectedSubCategory}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setSelectedSubCategory(value === '' ? null : Number(value));
-                    // Reset posisi saat subkategori berubah untuk mencegah filter stale
-                    setSelectedPosition(null);
-                  }}
-                  className="px-4 py-3 border-2 border-input rounded-lg focus:border-dinus-primary outline-none bg-white w-full"
-                >
-                  <option value="">Semua Subkategori</option>
-                  {subCategories && subCategories.map(subcategory => (
-                    <option key={subcategory.id} value={subcategory.id}>{subcategory.name}</option>
-                  ))}
-                </select>
-              )}
-              
-              {selectedSubCategory !== null && (
-                <select
-                  value={selectedPosition === null ? '' : selectedPosition}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setSelectedPosition(value === '' ? null : Number(value));
-                  }}
-                  className="px-4 py-3 border-2 border-input rounded-lg focus:border-dinus-primary outline-none bg-white w-full"
-                >
-                  <option value="">Semua Posisi</option>
-                  {positions && positions.map(position => (
-                    <option key={position.id} value={position.id}>{position.name}</option>
-                  ))}
-                </select>
-              )}
+          <div className="flex gap-2">
+            <div className="flex-1 relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-dinus-text/40" />
+              <Input
+                placeholder="Cari arsip berdasarkan judul, deskripsi, atau tag..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10 h-12 border-2 focus:border-dinus-primary"
+              />
             </div>
+            <Button
+              variant="outline"
+              onClick={() => setShowFilters(!showFilters)}
+              title="Toggle Filter (Ctrl+F)"
+              className={`h-12 px-4 border-2 transition-all duration-200 ${
+                showFilters || hasActiveFilters 
+                  ? 'border-dinus-primary bg-dinus-primary text-white' 
+                  : 'border-dinus-primary/20 text-dinus-primary hover:bg-dinus-primary hover:text-white'
+              }`}
+            >
+              <Filter className="w-5 h-5" />
+            </Button>
+            {hasActiveFilters && (
+              <Button
+                variant="outline"
+                onClick={clearAllFilters}
+                title="Hapus Semua Filter"
+                className="h-12 px-4 border-2 border-red-200 text-red-600 hover:bg-red-50"
+              >
+                <FilterX className="w-5 h-5" />
+              </Button>
+            )}
+          </div>
+
+          {/* Filter Panel */}
+          {showFilters && (
+            <Card className="bg-white/90 backdrop-blur-sm border-0 shadow-lg">
+              <CardContent className="p-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+                  {/* Category Filter */}
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium text-dinus-text">Kategori</Label>
+                    <Select value={filterCategory || undefined} onValueChange={(value) => setFilterCategory(value || '')}>
+                      <SelectTrigger className="h-10">
+                        <SelectValue placeholder="Semua Kategori" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {categories.map((category) => (
+                          <SelectItem key={category.id} value={category.id.toString()}>
+                            {category.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Subcategory Filter */}
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium text-dinus-text">Sub Kategori</Label>
+                    <Select value={filterSubcategory || undefined} onValueChange={(value) => setFilterSubcategory(value || '')}>
+                      <SelectTrigger className="h-10">
+                        <SelectValue placeholder="Semua Sub Kategori" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {subcategories
+                          .filter(sub => !filterCategory || sub.category_id.toString() === filterCategory)
+                          .map((subcategory) => (
+                            <SelectItem key={subcategory.id} value={subcategory.id.toString()}>
+                              {subcategory.name}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Location Filter */}
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium text-dinus-text">Lokasi</Label>
+                    <Select value={filterLocation || undefined} onValueChange={(value) => setFilterLocation(value || '')}>
+                      <SelectTrigger className="h-10">
+                        <SelectValue placeholder="Semua Lokasi" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {locations
+                          .filter(loc => !filterSubcategory || loc.subcategory_id.toString() === filterSubcategory)
+                          .map((location) => (
+                            <SelectItem key={location.id} value={location.id.toString()}>
+                              {location.name}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Date From Filter */}
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium text-dinus-text">Tanggal Dari</Label>
+                    <Input
+                      type="date"
+                      value={filterDateFrom}
+                      onChange={(e) => setFilterDateFrom(e.target.value)}
+                      className="h-10"
+                    />
+                  </div>
+
+                  {/* Date To Filter */}
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium text-dinus-text">Tanggal Sampai</Label>
+                    <Input
+                      type="date"
+                      value={filterDateTo}
+                      onChange={(e) => setFilterDateTo(e.target.value)}
+                      className="h-10"
+                    />
+                  </div>
+                </div>
+
+                {/* Filter Summary */}
+                {hasActiveFilters && (
+                  <div className="mt-4 pt-4 border-t border-dinus-primary/10">
+                    <div className="flex flex-wrap gap-2">
+                      <span className="text-sm text-dinus-text/70">Filter aktif:</span>
+                      {filterCategory && (
+                        <Badge variant="secondary" className="text-xs">
+                          Kategori: {categories.find(c => c.id.toString() === filterCategory)?.name}
+                        </Badge>
+                      )}
+                      {filterSubcategory && (
+                        <Badge variant="secondary" className="text-xs">
+                          Sub: {subcategories.find(s => s.id.toString() === filterSubcategory)?.name}
+                        </Badge>
+                      )}
+                      {filterLocation && (
+                        <Badge variant="secondary" className="text-xs">
+                          Lokasi: {locations.find(l => l.id.toString() === filterLocation)?.name}
+                        </Badge>
+                      )}
+                      {filterDateFrom && (
+                        <Badge variant="secondary" className="text-xs">
+                          Dari: {new Date(filterDateFrom).toLocaleDateString('id-ID')}
+                        </Badge>
+                      )}
+                      {filterDateTo && (
+                        <Badge variant="secondary" className="text-xs">
+                          Sampai: {new Date(filterDateTo).toLocaleDateString('id-ID')}
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          <div className="flex flex-wrap gap-2">
             <div className="flex flex-wrap items-center gap-2 mt-2 sm:mt-0">
-              {/* Tombol Kelola Kategori */}
+              {/* Tombol Tambah Arsip */}
               {isAdmin && (
                 <>
                   <Button
-                    onClick={() => setShowCategoryModal(true)}
-                    variant="outline"
-                    size="sm"
-                    className="flex items-center gap-1 border-dinus-primary/20 text-dinus-primary hover:bg-dinus-primary hover:text-white w-full sm:w-auto justify-center"
+                    onClick={() => {
+                      setEditingArchive(null);
+                      setShowArchiveForm(true);
+                    }}
+                    className="h-12 px-6 bg-gradient-to-r from-dinus-primary to-dinus-primary-light hover:from-dinus-primary-dark hover:to-dinus-primary text-white shadow-lg w-full sm:w-auto justify-center"
                   >
-                    <Settings className="w-4 h-4" />
-                    Kelola Kategori
+                    <Plus className="w-5 h-5 mr-2" />
+                    Tambah Arsip
                   </Button>
-                  <CategoryModal 
-                    isOpen={showCategoryModal} 
-                    onClose={() => setShowCategoryModal(false)} 
-                    onSave={() => setShowCategoryModal(false)}
-                  />
+                  <Button
+                    onClick={() => setShowFieldContentManagement(true)}
+                    variant="outline"
+                    className="h-12 px-6 border-dinus-primary/20 text-dinus-primary hover:bg-dinus-primary hover:text-white shadow-lg w-full sm:w-auto justify-center"
+                  >
+                    <Settings className="w-5 h-5 mr-2" />
+                    Kelola Field
+                  </Button>
                 </>
-              )}
-              
-              {/* Tombol Tambah Arsip */}
-              {isAdmin && (
-                <Button
-                  onClick={() => {
-                    setEditingArchive(null);
-                    setShowArchiveForm(true);
-                  }}
-                  className="h-12 px-6 bg-gradient-to-r from-dinus-primary to-dinus-primary-light hover:from-dinus-primary-dark hover:to-dinus-primary text-white shadow-lg w-full sm:w-auto justify-center"
-                >
-                  <Plus className="w-5 h-5 mr-2" />
-                  Tambah Arsip
-                </Button>
               )}
             </div>
           </div>
+        </div>
+
+        {/* Filter Results Indicator */}
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-dinus-text/70">
+              Menampilkan {filteredArchives.length} dari {archives.length} arsip
+            </span>
+            {hasActiveFilters && (
+              <Badge variant="outline" className="text-xs border-dinus-primary/30 text-dinus-primary">
+                Terfilter
+              </Badge>
+            )}
+          </div>
+          {filteredArchives.length > 0 && (
+            <span className="text-xs text-dinus-text/50">
+              {loading ? 'Memuat...' : `Diperbarui ${new Date().toLocaleTimeString('id-ID')}`}
+            </span>
+          )}
         </div>
 
         {/* Archives Grid */}
@@ -365,24 +526,24 @@ const Dashboard = () => {
               <CardContent className="p-0">
                 <div className="relative overflow-hidden rounded-t-lg">
                   <img
-                    src={getImageUrl(archive.image) || 'https://upload.wikimedia.org/wikipedia/commons/thumb/d/d1/Image_not_available.png/800px-Image_not_available.png?w=800&h=600&fit=crop'}
+                    src={getImageUrl(archive.file_path) || 'https://upload.wikimedia.org/wikipedia/commons/thumb/d/d1/Image_not_available.png/800px-Image_not_available.png?w=800&h=600&fit=crop'}
                     alt={archive.title}
                     className="w-full h-48 object-cover group-hover:scale-105 transition-transform duration-300"
                   />
                   <div className="absolute top-4 right-4 flex flex-col gap-2">
-                    <Badge className="bg-dinus-primary text-white">
-                      {archive.category ? archive.category.name : categories?.find(cat => cat.id === archive.category_id)?.name || 'Kategori'}
-                    </Badge>
-                    {archive.subcategory_id && (
-                      <Badge className="bg-dinus-primary-light text-white">
-                        {subCategories?.find(sub => sub.id === archive.subcategory_id)?.name || archive.subcategory?.name || 'Subkategori'}
+                    {/* Location Hierarchy Badges - show first 3 fields */}
+                    {Object.values(archive.location_hierarchy || {}).slice(0, 3).map((fieldValue, index) => (
+                      <Badge 
+                        key={index} 
+                        className={`text-white text-xs ${
+                          index === 0 ? 'bg-dinus-primary' : 
+                          index === 1 ? 'bg-dinus-primary-light' : 
+                          'bg-dinus-secondary'
+                        }`}
+                      >
+                        {String(fieldValue) || '-'}
                       </Badge>
-                    )}
-                    {archive.position_id && (
-                      <Badge className="bg-dinus-secondary text-white">
-                        {archive.position_name || archive.position?.name || positions?.find(pos => pos.id === archive.position_id)?.name || 'Posisi'}
-                      </Badge>
-                    )}
+                    ))}
                   </div>
                 </div>
                 <div className="p-6">
@@ -396,14 +557,8 @@ const Dashboard = () => {
                   <div className="space-y-2 text-xs text-dinus-text/60 mb-4">
                     <div className="flex items-center gap-2">
                       <Calendar className="w-3 h-3" />
-                      <span>{new Date(archive.date).toLocaleDateString('id-ID')}</span>
+                      <span>{new Date(archive.created_at).toLocaleDateString('id-ID')}</span>
                     </div>
-                    {archive.location && (
-                      <div className="flex items-center gap-2">
-                        <MapPin className="w-3 h-3" />
-                        <span>{archive.location}</span>
-                      </div>
-                    )}
                   </div>
 
                   <div className="flex flex-wrap gap-1 mb-4">
@@ -452,20 +607,41 @@ const Dashboard = () => {
           <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-lg">
             <CardContent className="p-12 text-center">
               <Archive className="w-16 h-16 mx-auto text-dinus-text/30 mb-4" />
-              <p className="text-lg text-dinus-text/60">Tidak ada arsip yang ditemukan</p>
-              <p className="text-sm text-dinus-text/40 mb-6">Coba ubah kata kunci pencarian atau kategori</p>
-              {isAdmin && (
-                <Button
-                  onClick={() => {
-                    setEditingArchive(null);
-                    setShowArchiveForm(true);
-                  }}
-                  className="bg-gradient-to-r from-dinus-primary to-dinus-primary-light hover:from-dinus-primary-dark hover:to-dinus-primary text-white"
-                >
-                  <Plus className="w-5 h-5 mr-2" />
-                  Tambah Arsip Pertama
-                </Button>
-              )}
+              <p className="text-lg text-dinus-text/60">
+                {archives.length === 0 ? 'Belum ada arsip' : 'Tidak ada arsip yang sesuai dengan filter'}
+              </p>
+              <p className="text-sm text-dinus-text/40 mb-6">
+                {archives.length === 0 
+                  ? 'Mulai dengan menambahkan arsip pertama Anda'
+                  : hasActiveFilters 
+                    ? 'Coba ubah atau hapus beberapa filter untuk melihat lebih banyak hasil'
+                    : 'Coba ubah kata kunci pencarian'
+                }
+              </p>
+              <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                {hasActiveFilters && (
+                  <Button
+                    variant="outline"
+                    onClick={clearAllFilters}
+                    className="border-dinus-primary/30 text-dinus-primary hover:bg-dinus-primary hover:text-white"
+                  >
+                    <FilterX className="w-4 h-4 mr-2" />
+                    Hapus Semua Filter
+                  </Button>
+                )}
+                {isAdmin && (
+                  <Button
+                    onClick={() => {
+                      setEditingArchive(null);
+                      setShowArchiveForm(true);
+                    }}
+                    className="bg-gradient-to-r from-dinus-primary to-dinus-primary-light hover:from-dinus-primary-dark hover:to-dinus-primary text-white"
+                  >
+                    <Plus className="w-5 h-5 mr-2" />
+                    {archives.length === 0 ? 'Tambah Arsip Pertama' : 'Tambah Arsip Baru'}
+                  </Button>
+                )}
+              </div>
             </CardContent>
           </Card>
         )}
@@ -478,8 +654,7 @@ const Dashboard = () => {
           isOpen={showArchiveModal}
           onClose={() => setShowArchiveModal(false)}
           onEdit={(archive) => {
-            setEditingArchive(archive);
-            setShowArchiveForm(true);
+            handleEditArchive(archive);
             setShowArchiveModal(false);
           }}
           onDelete={async (id) => {
@@ -504,6 +679,17 @@ const Dashboard = () => {
           }}
         />
       )}
+
+      {showFieldContentManagement && (
+        <FieldContentManagement
+          isOpen={showFieldContentManagement}
+          onClose={() => setShowFieldContentManagement(false)}
+          onSave={() => {
+            // Refresh any data if needed
+            setShowFieldContentManagement(false);
+          }}
+        />
+      )}
     </div>
   );
 };
@@ -520,89 +706,229 @@ const ArchiveFormComponent: React.FC<ArchiveFormProps> = ({ archive, onClose, on
   const [formData, setFormData] = useState({
     title: '',
     description: '',
-    category_id: '',
-    category_name: '',
-    subcategory_id: '',
-    subcategory_name: '',
-    position_id: '',
     date: '',
-    location: '',
-    image: null as File | null
+    image: null as File | null,
+    category_id: null as number | null,
+    subcategory_id: null as number | null,
+    location_id: null as number | null,
+    cabinet_id: null as number | null,
+    shelf_id: null as number | null,
+    position_id: null as number | null
   });
-  const [subCategories, setSubCategories] = useState<any[]>([]);
-  const [positions, setPositions] = useState<Position[]>([]);
 
   const { createArchive, updateArchive } = useArchiveOperations();
-  const { categories } = useCategories();
-  const { getSubCategories } = useSubCategoryOperations();
+  const { 
+    categories, 
+    subcategories, 
+    locations, 
+    cabinets, 
+    shelves, 
+    positions,
+    loading: staticFieldsLoading,
+    getSubcategoriesByCategory,
+    getLocationsBySubcategory,
+    getCabinetsByLocation,
+    getShelvesByCabinet,
+    getPositionsByShelf
+  } = useStaticFields();
+
+  // State for filtered options based on selections
+  const [filteredSubcategories, setFilteredSubcategories] = useState<any[]>([]);
+  const [filteredLocations, setFilteredLocations] = useState<any[]>([]);
+  const [filteredCabinets, setFilteredCabinets] = useState<any[]>([]);
+  const [filteredShelves, setFilteredShelves] = useState<any[]>([]);
+  const [filteredPositions, setFilteredPositions] = useState<any[]>([]);
+  const [isInitializingEdit, setIsInitializingEdit] = useState(false);
+  
+  // Refs to track previous values and prevent unnecessary resets
+  const prevCategoryId = useRef<number | null>(null);
+  const prevSubcategoryId = useRef<number | null>(null);
+  const prevLocationId = useRef<number | null>(null);
+  const prevCabinetId = useRef<number | null>(null);
+  const prevShelfId = useRef<number | null>(null);
+
+  // Reset refs when archive changes or form is opened/closed
+  useEffect(() => {
+    prevCategoryId.current = null;
+    prevSubcategoryId.current = null;
+    prevLocationId.current = null;
+    prevCabinetId.current = null;
+    prevShelfId.current = null;
+  }, [archive]);
 
   useEffect(() => {
-    if (archive) {
+    if (archive && !staticFieldsLoading) {
+      setIsInitializingEdit(true);
       setFormData({
         title: archive.title,
         description: archive.description || '',
-        category_id: archive.category_id?.toString() || '',
-        category_name: archive.category?.name || '',
-        subcategory_id: archive.subcategory_id?.toString() || '',
-        subcategory_name: archive.subcategory?.name || '',
-        position_id: archive.position_id?.toString() || '',
-        date: archive.date || '',
-        location: archive.location || '',
-        image: null
+        date: archive.date ? (new Date(archive.date).toISOString().split('T')[0]) : (archive.created_at ? new Date(archive.created_at).toISOString().split('T')[0] : ''),
+        image: null,
+        category_id: archive.category_id || null,
+        subcategory_id: archive.subcategory_id || null,
+        location_id: archive.location_id || null,
+        cabinet_id: archive.cabinet_id || null,
+        shelf_id: archive.shelf_id || null,
+        position_id: archive.position_id || null
       });
       
-      // Load subcategories if category is selected
-      if (archive.category_id) {
-        loadSubCategories(archive.category_id);
+      // Initialize filtered options for edit mode only after static fields are loaded
+      // Use a more reliable approach than setTimeout
+      if (categories.length > 0 && subcategories.length > 0) {
+        if (archive.category_id) {
+          const filteredSubs = getSubcategoriesByCategory(archive.category_id);
+          setFilteredSubcategories(filteredSubs);
+        }
+        if (archive.subcategory_id) {
+          const filteredLocs = getLocationsBySubcategory(archive.subcategory_id);
+          setFilteredLocations(filteredLocs);
+        }
+        if (archive.location_id) {
+          const filteredCabs = getCabinetsByLocation(archive.location_id);
+          setFilteredCabinets(filteredCabs);
+        }
+        if (archive.cabinet_id) {
+          const filteredShelvs = getShelvesByCabinet(archive.cabinet_id);
+          setFilteredShelves(filteredShelvs);
+        }
+        if (archive.shelf_id) {
+          const filteredPos = getPositionsByShelf(archive.shelf_id);
+          setFilteredPositions(filteredPos);
+        }
+        
+        // Set flag to false after initialization
+        setIsInitializingEdit(false);
       }
-      // Load positions if subcategory is selected
-      if (archive.subcategory_id) {
-        loadPositions(archive.subcategory_id);
-      }
+    } else if (!archive) {
+      // Reset form for new archive
+      setFormData({
+        title: '',
+        description: '',
+        date: '',
+        image: null,
+        category_id: null,
+        subcategory_id: null,
+        location_id: null,
+        cabinet_id: null,
+        shelf_id: null,
+        position_id: null
+      });
+      setFilteredSubcategories([]);
+      setFilteredLocations([]);
+      setFilteredCabinets([]);
+      setFilteredShelves([]);
+      setFilteredPositions([]);
+      setIsInitializingEdit(false);
     }
-  }, [archive]);
-  
-  // Function to load subcategories based on selected category
-  const loadSubCategories = async (categoryId: number) => {
-    try {
-      const data = await getSubCategories(categoryId);
-      setSubCategories(data || []);
-    } catch (error) {
-      console.error('Error loading subcategories:', error);
-    }
-  };
+  }, [archive, staticFieldsLoading, categories, subcategories, locations, cabinets, shelves, positions, getSubcategoriesByCategory, getLocationsBySubcategory, getCabinetsByLocation, getShelvesByCabinet, getPositionsByShelf]);
 
-  // Function to load positions based on selected subcategory
-  const loadPositions = async (subcategoryId: number) => {
-    try {
-      const data = await PositionService.getPositionsBySubcategoryId(subcategoryId);
-      setPositions(data || []);
-    } catch (error) {
-      console.error('Error loading positions:', error);
+  // Update filtered options when selections change
+  useEffect(() => {
+    // Only process if category_id actually changed
+    if (prevCategoryId.current !== formData.category_id) {
+      prevCategoryId.current = formData.category_id;
+      
+      if (formData.category_id) {
+        const filtered = getSubcategoriesByCategory(formData.category_id);
+        setFilteredSubcategories(filtered);
+      } else {
+        setFilteredSubcategories([]);
+        // Only reset child fields if not initializing edit data
+        if (!isInitializingEdit) {
+          setFormData(prev => ({ ...prev, subcategory_id: null }));
+        }
+      }
     }
-  };
+  }, [formData.category_id, isInitializingEdit]);
+
+  useEffect(() => {
+    // Only process if subcategory_id actually changed
+    if (prevSubcategoryId.current !== formData.subcategory_id) {
+      prevSubcategoryId.current = formData.subcategory_id;
+      
+      if (formData.subcategory_id) {
+        const filtered = getLocationsBySubcategory(formData.subcategory_id);
+        setFilteredLocations(filtered);
+      } else {
+        setFilteredLocations([]);
+        // Only reset child fields if not initializing edit data
+        if (!isInitializingEdit) {
+          setFormData(prev => ({ ...prev, location_id: null }));
+        }
+      }
+    }
+  }, [formData.subcategory_id, isInitializingEdit]);
+
+  useEffect(() => {
+    // Only process if location_id actually changed
+    if (prevLocationId.current !== formData.location_id) {
+      prevLocationId.current = formData.location_id;
+      
+      if (formData.location_id) {
+        const filtered = getCabinetsByLocation(formData.location_id);
+        setFilteredCabinets(filtered);
+      } else {
+        setFilteredCabinets([]);
+        // Only reset child fields if not initializing edit data
+        if (!isInitializingEdit) {
+          setFormData(prev => ({ ...prev, cabinet_id: null }));
+        }
+      }
+    }
+  }, [formData.location_id, isInitializingEdit]);
+
+  useEffect(() => {
+    // Only process if cabinet_id actually changed
+    if (prevCabinetId.current !== formData.cabinet_id) {
+      prevCabinetId.current = formData.cabinet_id;
+      
+      if (formData.cabinet_id) {
+        const filtered = getShelvesByCabinet(formData.cabinet_id);
+        setFilteredShelves(filtered);
+      } else {
+        setFilteredShelves([]);
+        // Only reset child fields if not initializing edit data
+        if (!isInitializingEdit) {
+          setFormData(prev => ({ ...prev, shelf_id: null }));
+        }
+      }
+    }
+  }, [formData.cabinet_id, isInitializingEdit]);
+
+  useEffect(() => {
+    // Only process if shelf_id actually changed
+    if (prevShelfId.current !== formData.shelf_id) {
+      prevShelfId.current = formData.shelf_id;
+      
+      if (formData.shelf_id) {
+        const filtered = getPositionsByShelf(formData.shelf_id);
+        setFilteredPositions(filtered);
+      } else {
+        setFilteredPositions([]);
+        // Only reset child fields if not initializing edit data
+        if (!isInitializingEdit) {
+          setFormData(prev => ({ ...prev, position_id: null }));
+        }
+      }
+    }
+  }, [formData.shelf_id, isInitializingEdit]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
 
     try {
-      // Use selected category ID
-      const categoryId = formData.category_id ? Number(formData.category_id) : undefined;
-      const subcategoryId = formData.subcategory_id ? Number(formData.subcategory_id) : undefined;
-      const positionId = formData.position_id ? Number(formData.position_id) : undefined;
-
       const archiveData = {
         title: formData.title,
         description: formData.description,
-        category_id: categoryId,
-        category_name: formData.category_name, // Send category name for backend to handle
-        subcategory_id: subcategoryId,
-        subcategory_name: formData.subcategory_name,
-        position_id: positionId,
         date: formData.date,
-        location: formData.location,
-        image: formData.image
+        image: formData.image,
+        category_id: formData.category_id,
+        subcategory_id: formData.subcategory_id,
+        location_id: formData.location_id,
+        cabinet_id: formData.cabinet_id,
+        shelf_id: formData.shelf_id,
+        position_id: formData.position_id
       };
 
       if (archive) {
@@ -676,105 +1002,6 @@ const ArchiveFormComponent: React.FC<ArchiveFormProps> = ({ archive, onClose, on
               />
             </div>
 
-            {/* Category */}
-            <div>
-              <Label htmlFor="category" className="text-sm font-semibold text-dinus-text">
-                Kategori *
-              </Label>
-            <select
-              id="category"
-              value={formData.category_id}
-              onChange={(e) => {
-                const selectedId = e.target.value;
-                const selectedCategory = categories?.find(cat => cat.id.toString() === selectedId);
-                setFormData({ 
-                  ...formData, 
-                  category_id: selectedId,
-                  category_name: selectedCategory ? selectedCategory.name : '',
-                  subcategory_id: '', // Reset subcategory when category changes
-                  subcategory_name: '',
-                  position_id: '' // Reset position when category changes
-                });
-                
-                // Load subcategories for the selected category
-                if (selectedId) {
-                  loadSubCategories(Number(selectedId));
-                } else {
-                  setSubCategories([]);
-                  setPositions([]);
-                }
-              }}
-                required
-                className="w-full px-3 py-2 border-2 border-input rounded-md focus:border-dinus-primary outline-none bg-white mt-1"
-              >
-                <option value="">Pilih Kategori</option>
-                {categories && categories.map(category => (
-                  <option key={category.id} value={category.id.toString()}>{category.name}</option>
-                ))}
-              </select>
-            </div>
-            
-            {/* Subcategory - only show if category is selected */}
-            {formData.category_id && (
-              <div>
-                <Label htmlFor="subcategory" className="text-sm font-semibold text-dinus-text">
-                  Sub Kategori
-                </Label>
-                <select
-                  id="subcategory"
-                  value={formData.subcategory_id}
-                  onChange={(e) => {
-                    const selectedId = e.target.value;
-                    const selectedSubCategory = subCategories?.find(sub => sub.id.toString() === selectedId);
-                    setFormData({ 
-                      ...formData, 
-                      subcategory_id: selectedId,
-                      subcategory_name: selectedSubCategory ? selectedSubCategory.name : '',
-                      position_id: '' // Reset position when subcategory changes
-                    });
-                    // Load positions for selected subcategory
-                    if (selectedId) {
-                      loadPositions(Number(selectedId));
-                    } else {
-                      setPositions([]);
-                    }
-                  }}
-                  className="w-full px-3 py-2 border-2 border-input rounded-md focus:border-dinus-primary outline-none bg-white mt-1"
-                >
-                  <option value="">Pilih Sub Kategori (Opsional)</option>
-                  {subCategories && subCategories.map(subcategory => (
-                    <option key={subcategory.id} value={subcategory.id.toString()}>{subcategory.name}</option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            {/* Position - only show if subcategory is selected */}
-            {formData.subcategory_id && (
-              <div>
-                <Label htmlFor="position" className="text-sm font-semibold text-dinus-text">
-                  Posisi
-                </Label>
-                <select
-                  id="position"
-                  value={formData.position_id}
-                  onChange={(e) => {
-                    const selectedId = e.target.value;
-                    setFormData({
-                      ...formData,
-                      position_id: selectedId
-                    });
-                  }}
-                  className="w-full px-3 py-2 border-2 border-input rounded-md focus:border-dinus-primary outline-none bg-white mt-1"
-                >
-                  <option value="">Pilih Posisi (Opsional)</option>
-                  {positions && positions.map(position => (
-                    <option key={position.id} value={position.id.toString()}>{position.name}</option>
-                  ))}
-                </select>
-              </div>
-            )}
-
             {/* Date */}
             <div>
               <Label htmlFor="date" className="text-sm font-semibold text-dinus-text">
@@ -790,19 +1017,141 @@ const ArchiveFormComponent: React.FC<ArchiveFormProps> = ({ archive, onClose, on
               />
             </div>
 
+            {/* Category */}
+            <div>
+              <Label htmlFor="category" className="text-sm font-semibold text-dinus-text">
+                Kategori *
+              </Label>
+              <Select
+                value={formData.category_id?.toString() || ''}
+                onValueChange={(value) => setFormData({ ...formData, category_id: value ? parseInt(value) : null })}
+              >
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="Pilih kategori" />
+                </SelectTrigger>
+                <SelectContent>
+                  {categories.map((category) => (
+                    <SelectItem key={category.id} value={category.id.toString()}>
+                      {category.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Subcategory */}
+            <div>
+              <Label htmlFor="subcategory" className="text-sm font-semibold text-dinus-text">
+                Sub Kategori
+              </Label>
+              <Select
+                value={formData.subcategory_id?.toString() || ''}
+                onValueChange={(value) => setFormData({ ...formData, subcategory_id: value ? parseInt(value) : null })}
+                disabled={!formData.category_id}
+              >
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="Pilih sub kategori" />
+                </SelectTrigger>
+                <SelectContent>
+                  {filteredSubcategories.map((subcategory) => (
+                    <SelectItem key={subcategory.id} value={subcategory.id.toString()}>
+                      {subcategory.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
             {/* Location */}
             <div>
               <Label htmlFor="location" className="text-sm font-semibold text-dinus-text">
                 Lokasi
               </Label>
-              <Input
-                id="location"
-                type="text"
-                value={formData.location}
-                onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-                placeholder="Lokasi pengambilan foto"
-                className="mt-1"
-              />
+              <Select
+                value={formData.location_id?.toString() || ''}
+                onValueChange={(value) => setFormData({ ...formData, location_id: value ? parseInt(value) : null })}
+                disabled={!formData.subcategory_id}
+              >
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="Pilih lokasi" />
+                </SelectTrigger>
+                <SelectContent>
+                  {filteredLocations.map((location) => (
+                    <SelectItem key={location.id} value={location.id.toString()}>
+                      {location.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Cabinet */}
+            <div>
+              <Label htmlFor="cabinet" className="text-sm font-semibold text-dinus-text">
+                Kabinet
+              </Label>
+              <Select
+                value={formData.cabinet_id?.toString() || ''}
+                onValueChange={(value) => setFormData({ ...formData, cabinet_id: value ? parseInt(value) : null })}
+                disabled={!formData.location_id}
+              >
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="Pilih kabinet" />
+                </SelectTrigger>
+                <SelectContent>
+                  {filteredCabinets.map((cabinet) => (
+                    <SelectItem key={cabinet.id} value={cabinet.id.toString()}>
+                      {cabinet.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Shelf */}
+            <div>
+              <Label htmlFor="shelf" className="text-sm font-semibold text-dinus-text">
+                Rak
+              </Label>
+              <Select
+                value={formData.shelf_id?.toString() || ''}
+                onValueChange={(value) => setFormData({ ...formData, shelf_id: value ? parseInt(value) : null })}
+                disabled={!formData.cabinet_id}
+              >
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="Pilih rak" />
+                </SelectTrigger>
+                <SelectContent>
+                  {filteredShelves.map((shelf) => (
+                    <SelectItem key={shelf.id} value={shelf.id.toString()}>
+                      {shelf.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Position */}
+            <div>
+              <Label htmlFor="position" className="text-sm font-semibold text-dinus-text">
+                Posisi
+              </Label>
+              <Select
+                value={formData.position_id?.toString() || ''}
+                onValueChange={(value) => setFormData({ ...formData, position_id: value ? parseInt(value) : null })}
+                disabled={!formData.shelf_id}
+              >
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="Pilih posisi" />
+                </SelectTrigger>
+                <SelectContent>
+                  {filteredPositions.map((position) => (
+                    <SelectItem key={position.id} value={position.id.toString()}>
+                      {position.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             {/* Image Upload */}
@@ -829,14 +1178,14 @@ const ArchiveFormComponent: React.FC<ArchiveFormProps> = ({ archive, onClose, on
           </div>
 
           {/* Preview */}
-          {(formData.image || (archive && archive.image)) && (
+          {(formData.image || (archive && archive.file_path)) && (
             <div className="border border-dinus-primary/20 rounded-lg p-4 bg-dinus-gray/30">
               <Label className="text-sm font-semibold text-dinus-text mb-2 block">
                 Preview Gambar
               </Label>
               <div className="relative w-full h-32 bg-dinus-gray rounded-lg overflow-hidden">
                 <img
-                  src={formData.image ? URL.createObjectURL(formData.image) : getImageUrl(archive?.image)}
+                  src={formData.image ? URL.createObjectURL(formData.image) : getImageUrl(archive?.file_path)}
                   alt="Preview"
                   className="w-full h-full object-cover"
                 />
